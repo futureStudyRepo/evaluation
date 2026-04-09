@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Object Detection 평가 지표</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@300;400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --panel: #111318;
+    --border: #1e2230;
+    --accent: #00e5ff;
+    --accent2: #ff4d6d;
+    --accent3: #69ff47;
+    --accent4: #ffd60a;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --tp: #69ff47;
+    --fp: #ff4d6d;
+    --fn: #ffd60a;
+    --tn: #374151;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 48px 40px 32px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: -60px;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(0,229,255,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(36px, 6vw, 72px);
+    letter-spacing: 4px;
+    color: #fff;
+    line-height: 1;
+  }
+  header h1 span { color: var(--accent); }
+  .subtitle {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .toc {
+    display: flex;
+    gap: 12px;
+    padding: 20px 40px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .toc-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .toc-item:hover { border-color: var(--accent); color: var(--accent); }
+
+  main { padding: 40px; max-width: 1200px; margin: 0 auto; }
+
+  /* Section */
+  .section {
+    margin-bottom: 80px;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeUp 0.6s forwards;
+  }
+  .section:nth-child(1) { animation-delay: 0.1s; }
+  .section:nth-child(2) { animation-delay: 0.2s; }
+  .section:nth-child(3) { animation-delay: 0.3s; }
+  .section:nth-child(4) { animation-delay: 0.4s; }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    color: var(--border);
+    line-height: 1;
+  }
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .section-title span { color: var(--accent); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  /* ─────── 1. IoU ─────── */
+  .iou-diagram {
+    position: relative;
+    width: 100%;
+    height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .iou-diagram svg { width: 100%; height: 100%; }
+
+  .formula-block {
+    background: #070a0e;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+  .formula-block .eq { color: var(--accent); font-size: 15px; }
+  .formula-block .comment { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+  .badge-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .badge-tp { background: rgba(105,255,71,0.15); color: var(--tp); border: 1px solid var(--tp); }
+  .badge-fp { background: rgba(255,77,109,0.15); color: var(--fp); border: 1px solid var(--fp); }
+  .badge-fn { background: rgba(255,214,10,0.15); color: var(--fn); border: 1px solid var(--fn); }
+  .badge-tn { background: rgba(55,65,81,0.3); color: #9ca3af; border: 1px solid #374151; }
+
+  /* confusion matrix */
+  .cm-grid {
+    display: grid;
+    grid-template-columns: auto 1fr 1fr;
+    grid-template-rows: auto 1fr 1fr;
+    gap: 4px;
+    margin-top: 16px;
+  }
+  .cm-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    text-align: center;
+  }
+  .cm-cell {
+    border-radius: 4px;
+    padding: 18px 10px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .cm-tp { background: rgba(105,255,71,0.12); border: 1px solid var(--tp); }
+  .cm-fp { background: rgba(255,77,109,0.12); border: 1px solid var(--fp); }
+  .cm-fn { background: rgba(255,214,10,0.12); border: 1px solid var(--fn); }
+  .cm-tn { background: rgba(55,65,81,0.2); border: 1px solid #374151; }
+  .cm-cell .val { font-size: 18px; font-weight: 700; color: #fff; }
+  .cm-cell .name { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* axis labels */
+  .axis-label {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+    letter-spacing: 1px;
+  }
+
+  /* ─────── 2. Threshold slider ─────── */
+  .slider-wrap {
+    margin-top: 16px;
+  }
+  .thresh-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(to right, var(--accent2), var(--accent));
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  .thresh-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,229,255,0.4);
+  }
+  .thresh-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .thresh-val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--accent);
+  }
+  .pr-bars { margin-top: 16px; }
+  .pr-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .pr-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    width: 70px;
+  }
+  .bar-bg {
+    flex: 1;
+    height: 10px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .bar-prec { background: var(--accent); }
+  .bar-recall { background: var(--accent2); }
+  .bar-f1 { background: var(--accent3); }
+  .bar-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    width: 40px;
+    text-align: right;
+  }
+
+  /* PR curve */
+  .pr-curve-wrap {
+    margin-top: 16px;
+    position: relative;
+  }
+
+  /* ─────── 3. Loss ─────── */
+  .loss-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .loss-card {
+    background: #070a0e;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+  }
+  .loss-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+  .loss-formula {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 8px;
+    line-height: 1.8;
+  }
+  .loss-desc { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .loss-curve { margin-top: 12px; }
+  .loss-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .imbalance-viz {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 12px;
+  }
+  .imb-block {
+    height: 30px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  /* ─────── 4. mAP ─────── */
+  .map-flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+  }
+  .flow-step {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    text-align: center;
+  }
+  .flow-arrow {
+    color: var(--accent);
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .iou-thresh-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .iou-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.2s;
+  }
+  .iou-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,0.08); }
+  .iou-chip.highlight { border-color: var(--accent3); color: var(--accent3); background: rgba(105,255,71,0.08); }
+
+  /* PR Area chart via canvas */
+  canvas { display: block; }
+
+  /* info list */
+  .info-list { margin-top: 12px; }
+  .info-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .info-item:last-child { border: none; }
+  .info-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+
+  .full-width { grid-column: 1 / -1; }
+
+  @media (max-width: 700px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    main { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-tag">// Deep Learning · Object Detection</div>
+  <h1>DETECTION <span>METRICS</span></h1>
+  <div class="subtitle">IoU · Confusion Matrix · Confidence Threshold · Loss Function · mAP</div>
+</header>
+
+<div class="toc">
+  <div class="toc-item" onclick="scrollTo(0, document.getElementById('s1').offsetTop - 20)">01 IoU & Confusion</div>
+  <div class="toc-item" onclick="scrollTo(0, document.getElementById('s2').offsetTop - 20)">02 Confidence Threshold</div>
+  <div class="toc-item" onclick="scrollTo(0, document.getElementById('s3').offsetTop - 20)">03 Loss Functions</div>
+  <div class="toc-item" onclick="scrollTo(0, document.getElementById('s4').offsetTop - 20)">04 mAP</div>
+</div>
+
+<main>
+
+<!-- ══════════════ SECTION 1 ══════════════ -->
+<div class="section" id="s1">
+  <div class="section-header">
+    <div class="section-num">01</div>
+    <div class="section-title">IoU <span>&</span> Confusion Matrix</div>
+  </div>
+
+  <div class="grid-2">
+    <!-- IoU diagram -->
+    <div class="card">
+      <div class="card-title">// Intersection over Union</div>
+      <div class="iou-diagram">
+        <svg viewBox="0 0 280 180" xmlns="http://www.w3.org/2000/svg">
+          <!-- Ground truth box -->
+          <rect x="30" y="30" width="130" height="120" rx="2"
+                fill="rgba(0,229,255,0.06)" stroke="#00e5ff" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <!-- Prediction box -->
+          <rect x="90" y="50" width="150" height="110" rx="2"
+                fill="rgba(255,77,109,0.06)" stroke="#ff4d6d" stroke-width="1.5"/>
+          <!-- Intersection -->
+          <rect x="90" y="50" width="70" height="100" rx="2"
+                fill="rgba(105,255,71,0.18)" stroke="#69ff47" stroke-width="1.5"/>
+
+          <!-- Labels -->
+          <text x="38" y="24" fill="#00e5ff" font-size="10" font-family="JetBrains Mono">Ground Truth</text>
+          <text x="160" y="170" fill="#ff4d6d" font-size="10" font-family="JetBrains Mono">Prediction</text>
+          <text x="100" y="102" fill="#69ff47" font-size="10" font-family="JetBrains Mono" font-weight="bold">∩</text>
+
+          <!-- Union hatching hint -->
+          <text x="38" y="160" fill="#6b7280" font-size="9" font-family="JetBrains Mono">Union (∪)</text>
+
+          <!-- Dimension arrows -->
+          <line x1="90" y1="170" x2="240" y2="170" stroke="#374151" stroke-width="1"/>
+          <text x="150" y="178" fill="#6b7280" font-size="8" font-family="JetBrains Mono" text-anchor="middle">Pred width</text>
+        </svg>
+      </div>
+      <div class="formula-block">
+        <div class="eq">IoU = |A ∩ B| / |A ∪ B|</div>
+        <div class="eq" style="margin-top:6px; font-size:12px; color: #9ca3af;">
+          = Intersection Area / Union Area
+        </div>
+        <div class="comment">─ IoU ≥ 0.5 → TP 판정 (일반 기준)</div>
+        <div class="comment">─ IoU &lt; 0.5 → FP 판정</div>
+        <div class="comment">─ 미탐지 GT → FN 판정</div>
+      </div>
+      <div class="badge-row">
+        <span class="badge badge-tp">TP: IoU ≥ θ</span>
+        <span class="badge badge-fp">FP: IoU &lt; θ</span>
+        <span class="badge badge-fn">FN: 미탐지</span>
+      </div>
+    </div>
+
+    <!-- Confusion Matrix -->
+    <div class="card">
+      <div class="card-title">// Confusion Matrix (Object Detection)</div>
+      <div style="margin-bottom:8px; font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace;">
+        Predicted →
+      </div>
+      <div class="cm-grid">
+        <!-- Row 0 -->
+        <div></div>
+        <div class="axis-label">Positive<br>(예측: 있음)</div>
+        <div class="axis-label">Negative<br>(예측: 없음)</div>
+
+        <!-- Row 1 -->
+        <div class="cm-label" style="writing-mode:vertical-rl; text-orientation:mixed; transform:rotate(180deg); color:var(--muted);">
+          Actual +
+        </div>
+        <div class="cm-cell cm-tp">
+          <div class="val" style="color:var(--tp)">TP</div>
+          <div class="name">True Positive</div>
+          <div style="font-size:9px;color:#6b7280;margin-top:4px;">올바른 탐지</div>
+        </div>
+        <div class="cm-cell cm-fn">
+          <div class="val" style="color:var(--fn)">FN</div>
+          <div class="name">False Negative</div>
+          <div style="font-size:9px;color:#6b7280;margin-top:4px;">놓친 객체</div>
+        </div>
+
+        <!-- Row 2 -->
+        <div class="cm-label" style="writing-mode:vertical-rl; text-orientation:mixed; transform:rotate(180deg);">
+          Actual −
+        </div>
+        <div class="cm-cell cm-fp">
+          <div class="val" style="color:var(--fp)">FP</div>
+          <div class="name">False Positive</div>
+          <div style="font-size:9px;color:#6b7280;margin-top:4px;">오탐지</div>
+        </div>
+        <div class="cm-cell cm-tn">
+          <div class="val" style="color:#9ca3af">TN</div>
+          <div class="name">True Negative</div>
+          <div style="font-size:9px;color:#6b7280;margin-top:4px;">올바른 배경</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;" class="info-list">
+        <div class="info-item">
+          <div class="info-dot" style="background:var(--accent)"></div>
+          <div><b style="color:#fff">Precision</b> = TP / (TP+FP) &nbsp;→&nbsp; <span style="color:var(--muted);font-size:12px;">예측 중 맞은 비율</span></div>
+        </div>
+        <div class="info-item">
+          <div class="info-dot" style="background:var(--accent2)"></div>
+          <div><b style="color:#fff">Recall</b> = TP / (TP+FN) &nbsp;→&nbsp; <span style="color:var(--muted);font-size:12px;">실제 중 찾아낸 비율</span></div>
+        </div>
+        <div class="info-item">
+          <div class="info-dot" style="background:var(--accent3)"></div>
+          <div><b style="color:#fff">F1</b> = 2·P·R / (P+R) &nbsp;→&nbsp; <span style="color:var(--muted);font-size:12px;">Precision-Recall 조화평균</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SECTION 2 ══════════════ -->
+<div class="section" id="s2">
+  <div class="section-header">
+    <div class="section-num">02</div>
+    <div class="section-title">Confidence Threshold <span>&</span> PR Trade-off</div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">// 임계값 조정 → Precision / Recall 변화</div>
+      <div class="slider-wrap">
+        <input type="range" class="thresh-slider" id="threshSlider" min="1" max="99" value="50">
+        <div class="thresh-display">
+          <div>
+            <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">Threshold</div>
+            <div class="thresh-val" id="threshVal">0.50</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;" id="threshLabel">균형 지점</div>
+          </div>
+        </div>
+        <div class="pr-bars">
+          <div class="pr-bar-row">
+            <div class="pr-label">Precision</div>
+            <div class="bar-bg"><div class="bar-fill bar-prec" id="barPrec" style="width:50%"></div></div>
+            <div class="bar-num" id="numPrec" style="color:var(--accent)">0.50</div>
+          </div>
+          <div class="pr-bar-row">
+            <div class="pr-label">Recall</div>
+            <div class="bar-bg"><div class="bar-fill bar-recall" id="barRecall" style="width:50%"></div></div>
+            <div class="bar-num" id="numRecall" style="color:var(--accent2)">0.50</div>
+          </div>
+          <div class="pr-bar-row">
+            <div class="pr-label">F1 Score</div>
+            <div class="bar-bg"><div class="bar-fill bar-f1" id="barF1" style="width:50%"></div></div>
+            <div class="bar-num" id="numF1" style="color:var(--accent3)">0.50</div>
+          </div>
+        </div>
+      </div>
+      <div class="formula-block" style="margin-top:20px;">
+        <div class="eq" id="threshInterpret">Threshold ↑ → Precision ↑, Recall ↓</div>
+        <div class="comment">─ 높은 임계값: 확실한 것만 예측 → FP↓ 하지만 FN↑</div>
+        <div class="comment">─ 낮은 임계값: 많이 예측 → FP↑ 하지만 FN↓</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">// Precision-Recall Curve</div>
+      <canvas id="prCanvas" width="340" height="220" style="width:100%;"></canvas>
+      <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;">
+          <div style="width:16px;height:2px;background:var(--accent)"></div>
+          <span style="color:var(--muted)">PR Curve</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;">
+          <div style="width:16px;height:2px;background:var(--accent3);border-style:dashed;border-width:1px;"></div>
+          <span style="color:var(--muted)">AP = 곡선 아래 면적</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;">
+          <div style="width:8px;height:8px;background:var(--accent2);border-radius:50%;"></div>
+          <span style="color:var(--muted)">현재 임계값 위치</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SECTION 3 ══════════════ -->
+<div class="section" id="s3">
+  <div class="section-header">
+    <div class="section-num">03</div>
+    <div class="section-title">의료 영상 분할 <span>Loss Function</span></div>
+  </div>
+
+  <!-- Imbalance viz -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">// 클래스 불균형 문제 (의료 영상)</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">배경(Background)이 압도적으로 넓고, 관심 객체(Cell/Tumor)는 극히 작은 비율 차지</div>
+    <div class="imbalance-viz">
+      <div class="imb-block" style="width:78%;background:rgba(55,65,81,0.5);border:1px solid #374151;color:#6b7280;">
+        Background (배경) — 95%+
+      </div>
+      <div class="imb-block" style="width:22%;background:rgba(255,77,109,0.2);border:1px solid var(--accent2);color:var(--accent2);">
+        Object — 5%↓
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+      → CE loss만 쓰면 모델이 배경만 예측해도 loss가 낮음 → Dice Loss 병행 필요
+    </div>
+  </div>
+
+  <div class="loss-compare">
+    <!-- Cross Entropy -->
+    <div class="loss-card">
+      <div class="loss-name" style="color:var(--accent)">Cross Entropy</div>
+      <div class="loss-formula">
+        L_CE = −[y·log(p̂) + (1−y)·log(1−p̂)]<br><br>
+        <span style="color:#6b7280;font-size:11px;">
+          y : ground truth (0 or 1)<br>
+          p̂ : 예측 확률
+        </span>
+      </div>
+      <div class="loss-desc">
+        픽셀 단위 분류 손실.<br>
+        각 픽셀을 독립적으로 평가하기 때문에 배경 픽셀이 많을수록 배경에 치우쳐 학습됨.
+      </div>
+      <canvas id="ceCanvas" width="240" height="90" style="width:100%;margin-top:12px;"></canvas>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="badge badge-tp" style="font-size:10px;">픽셀 독립 평가</span>
+        <span class="badge badge-fp" style="font-size:10px;">불균형에 취약</span>
+      </div>
+    </div>
+
+    <!-- Dice Loss -->
+    <div class="loss-card">
+      <div class="loss-name" style="color:var(--accent3)">Dice Loss</div>
+      <div class="loss-formula">
+        Dice = 2|A∩B| / (|A|+|B|)<br>
+        L_Dice = 1 − Dice<br><br>
+        <span style="color:#6b7280;font-size:11px;">
+          A : 예측 마스크 (pred)<br>
+          B : 실제 마스크 (GT)
+        </span>
+      </div>
+      <div class="loss-desc">
+        IoU와 유사하게 겹침(overlap)을 직접 최적화.<br>
+        클래스 빈도와 무관하게 작은 객체도 동등한 가중치로 학습 가능.
+      </div>
+      <canvas id="diceCanvas" width="240" height="90" style="width:100%;margin-top:12px;"></canvas>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="badge badge-tp" style="font-size:10px;">Overlap 최적화</span>
+        <span class="badge badge-tp" style="font-size:10px;border-color:var(--accent3);color:var(--accent3);background:rgba(105,255,71,0.1);">불균형 강건</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Combined -->
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">// 실전: 결합 손실 함수 (Combined Loss)</div>
+    <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;margin-top:8px;">
+      <div style="background:#070a0e;border:1px solid var(--border);border-radius:4px;padding:14px;text-align:center;">
+        <div style="font-family:'Bebas Neue';font-size:18px;color:var(--accent);letter-spacing:2px;">L_Total</div>
+        <div style="font-family:'JetBrains Mono';font-size:11px;color:var(--muted);margin-top:4px;">최종 손실</div>
+      </div>
+      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--muted)">=</div>
+      <div style="background:#070a0e;border:1px solid var(--border);border-radius:4px;padding:14px;text-align:center;">
+        <div style="font-family:'JetBrains Mono';font-size:13px;color:var(--accent)">α · L_CE</div>
+        <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--muted);margin-top:4px;">픽셀 정확도</div>
+      </div>
+      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--muted)">+</div>
+      <div style="background:#070a0e;border:1px solid var(--border);border-radius:4px;padding:14px;text-align:center;">
+        <div style="font-family:'JetBrains Mono';font-size:13px;color:var(--accent3)">(1−α) · L_Dice</div>
+        <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--muted);margin-top:4px;">겹침 최적화</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:14px;font-family:'JetBrains Mono',monospace;">
+      α ∈ [0,1] — 보통 α=0.5 시작 → 검증 성능 기반 조정 | Focal Loss 추가로 Hard Sample 가중치 부여 가능
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SECTION 4 ══════════════ -->
+<div class="section" id="s4">
+  <div class="section-header">
+    <div class="section-num">04</div>
+    <div class="section-title">mAP <span>— mean Average Precision</span></div>
+  </div>
+
+  <!-- Flow -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">// 계산 파이프라인</div>
+    <div class="map-flow">
+      <div class="flow-step">모델 예측<br><span style="color:var(--muted);font-size:10px;">(box, score, class)</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">IoU 임계값<br><span style="color:var(--muted);font-size:10px;">θ = 0.5 ~ 0.95</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">TP / FP / FN<br><span style="color:var(--muted);font-size:10px;">판정</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">P-R Curve<br><span style="color:var(--muted);font-size:10px;">per class</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="border-color:var(--accent);color:var(--accent);">AP<br><span style="font-size:10px;color:var(--muted);">AUC of PR</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="border-color:var(--accent3);color:var(--accent3);">mAP<br><span style="font-size:10px;color:var(--muted);">mean over class</span></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- IoU thresholds -->
+    <div class="card">
+      <div class="card-title">// COCO vs Kaggle 평가 방식 비교</div>
+      <div style="margin-top:8px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-family:'JetBrains Mono',monospace;">COCO AP@[0.5:0.05:0.95] — 10개 임계값 평균</div>
+        <div class="iou-thresh-row">
+          <span class="iou-chip active">0.50</span>
+          <span class="iou-chip active">0.55</span>
+          <span class="iou-chip active">0.60</span>
+          <span class="iou-chip active">0.65</span>
+          <span class="iou-chip active">0.70</span>
+          <span class="iou-chip active">0.75</span>
+          <span class="iou-chip active">0.80</span>
+          <span class="iou-chip active">0.85</span>
+          <span class="iou-chip active">0.90</span>
+          <span class="iou-chip active">0.95</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:8px;">
+          mAP_COCO = (1/10) Σ AP@θᵢ
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-family:'JetBrains Mono',monospace;">Kaggle Sartorius — 6개 임계값 평균</div>
+        <div class="iou-thresh-row">
+          <span class="iou-chip highlight">0.50</span>
+          <span class="iou-chip highlight">0.55</span>
+          <span class="iou-chip highlight">0.60</span>
+          <span class="iou-chip highlight">0.65</span>
+          <span class="iou-chip highlight">0.70</span>
+          <span class="iou-chip highlight">0.75</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:8px;">
+          mAP_Sartorius = (1/6) Σ AP@θᵢ
+        </div>
+      </div>
+
+      <div class="formula-block" style="margin-top:16px;">
+        <div class="eq">AP = ∫₀¹ p(r) dr  ≈ Σ (rₙ − rₙ₋₁)·pₙ</div>
+        <div class="comment">─ 11-point interpolation 또는 all-point interpolation</div>
+        <div class="comment">─ mAP = mean AP over all classes</div>
+      </div>
+    </div>
+
+    <!-- AP canvas -->
+    <div class="card">
+      <div class="card-title">// AP 시각화 (PR Curve AUC)</div>
+      <canvas id="mapCanvas" width="340" height="200" style="width:100%;"></canvas>
+      <div style="margin-top:10px;" class="info-list">
+        <div class="info-item">
+          <div class="info-dot" style="background:var(--accent)"></div>
+          <div style="font-size:12px;"><b>AP@0.5</b>: 느슨한 기준 → 박스가 대략 맞으면 TP <span style="color:var(--muted)">(일반 탐지)</span></div>
+        </div>
+        <div class="info-item">
+          <div class="info-dot" style="background:var(--accent3)"></div>
+          <div style="font-size:12px;"><b>AP@0.75</b>: 엄격한 기준 → 박스가 정교하게 맞아야 TP <span style="color:var(--muted)">(정밀 분할)</span></div>
+        </div>
+        <div class="info-item">
+          <div class="info-dot" style="background:var(--accent4)"></div>
+          <div style="font-size:12px;"><b>AP@0.5:0.95</b>: 균형적 평가 → COCO 표준</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script>
+// ────────── Threshold Slider ──────────
+const slider = document.getElementById('threshSlider');
+const threshVal = document.getElementById('threshVal');
+const barPrec = document.getElementById('barPrec');
+const barRecall = document.getElementById('barRecall');
+const barF1 = document.getElementById('barF1');
+const numPrec = document.getElementById('numPrec');
+const numRecall = document.getElementById('numRecall');
+const numF1 = document.getElementById('numF1');
+const threshLabel = document.getElementById('threshLabel');
+
+function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+
+function updateThreshold() {
+  const t = slider.value / 100;
+  threshVal.textContent = t.toFixed(2);
+
+  // Model: precision increases with threshold, recall decreases
+  const prec = sigmoid((t - 0.3) * 8) * 0.85 + 0.1;
+  const recall = sigmoid((0.7 - t) * 8) * 0.85 + 0.1;
+  const f1 = 2 * prec * recall / (prec + recall);
+
+  barPrec.style.width = (prec * 100) + '%';
+  barRecall.style.width = (recall * 100) + '%';
+  barF1.style.width = (f1 * 100) + '%';
+  numPrec.textContent = prec.toFixed(2);
+  numRecall.textContent = recall.toFixed(2);
+  numF1.textContent = f1.toFixed(2);
+
+  if (t < 0.3) threshLabel.textContent = '낮은 임계값 → 고재현율';
+  else if (t > 0.7) threshLabel.textContent = '높은 임계값 → 고정밀도';
+  else threshLabel.textContent = '균형 지점';
+
+  drawPRCurve(t);
+}
+
+slider.addEventListener('input', updateThreshold);
+
+// ────────── PR Curve Canvas ──────────
+function drawPRCurve(threshold) {
+  const canvas = document.getElementById('prCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pad = { l: 40, r: 20, t: 16, b: 36 };
+  const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#070a0e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1e2230';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (ch / 4) * i;
+    const x = pad.l + (cw / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ch); ctx.stroke();
+  }
+
+  // Axes labels
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '9px JetBrains Mono';
+  for (let i = 0; i <= 4; i++) {
+    const v = (i / 4).toFixed(1);
+    ctx.fillText(v, pad.l - 26, pad.t + ch - (ch / 4) * i + 3);
+    ctx.fillText(v, pad.l + (cw / 4) * i - 6, pad.t + ch + 14);
+  }
+  ctx.fillText('Recall →', pad.l + cw / 2 - 20, H - 4);
+
+  // AUC fill
+  const prPoints = [];
+  for (let i = 0; i <= 60; i++) {
+    const r = i / 60;
+    const p = Math.pow(1 - r, 0.45) * 0.82 + 0.08;
+    prPoints.push({ r, p });
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t + ch);
+  prPoints.forEach(pt => {
+    const x = pad.l + pt.r * cw;
+    const y = pad.t + (1 - pt.p) * ch;
+    ctx.lineTo(x, y);
+  });
+  ctx.lineTo(pad.l + cw, pad.t + ch);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,229,255,0.07)';
+  ctx.fill();
+
+  // PR curve line
+  ctx.beginPath();
+  prPoints.forEach((pt, i) => {
+    const x = pad.l + pt.r * cw;
+    const y = pad.t + (1 - pt.p) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Current threshold point
+  const t = threshold;
+  const currPrec = sigmoid((t - 0.3) * 8) * 0.85 + 0.1;
+  const currRecall = sigmoid((0.7 - t) * 8) * 0.85 + 0.1;
+  const px = pad.l + currRecall * cw;
+  const py = pad.t + (1 - currPrec) * ch;
+  ctx.beginPath();
+  ctx.arc(px, py, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff4d6d';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // AP label
+  ctx.fillStyle = '#00e5ff';
+  ctx.font = 'bold 11px JetBrains Mono';
+  ctx.fillText('AP ≈ 0.72', pad.l + cw * 0.55, pad.t + ch * 0.3);
+}
+
+// ────────── CE Loss Curve ──────────
+function drawCECurve() {
+  const canvas = document.getElementById('ceCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#070a0e';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.beginPath();
+  for (let i = 1; i <= 100; i++) {
+    const p = i / 100;
+    const loss = -Math.log(p);
+    const x = (i / 100) * W;
+    const y = H - Math.min(loss * 30, H - 5);
+    i === 1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '9px JetBrains Mono';
+  ctx.fillText('p̂ →', W - 24, H - 4);
+  ctx.fillText('loss ↑', 4, 12);
+}
+
+// ────────── Dice Curve ──────────
+function drawDiceCurve() {
+  const canvas = document.getElementById('diceCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#070a0e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Dice: 1 - 2*p/(1+p), p = overlap ratio
+  ctx.beginPath();
+  for (let i = 0; i <= 100; i++) {
+    const p = i / 100;
+    const dice_coef = (2 * p) / (1 + p + 0.0001);
+    const loss = 1 - dice_coef;
+    const x = (i / 100) * W;
+    const y = H - loss * (H - 10) - 5;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#69ff47';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '9px JetBrains Mono';
+  ctx.fillText('overlap →', W - 54, H - 4);
+  ctx.fillText('Dice Loss ↓', 4, 12);
+}
+
+// ────────── mAP canvas ──────────
+function drawMapCanvas() {
+  const canvas = document.getElementById('mapCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pad = { l: 40, r: 16, t: 16, b: 36 };
+  const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+
+  ctx.fillStyle = '#070a0e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1e2230';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (ch / 4) * i;
+    const x = pad.l + (cw / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ch); ctx.stroke();
+  }
+
+  // Three PR curves for different IoU thresholds
+  const curves = [
+    { color: '#00e5ff', label: 'IoU@0.5', alpha: 0.3, drop: 0.15 },
+    { color: '#ffd60a', label: 'IoU@0.5:0.95', alpha: 0.2, drop: 0.35 },
+    { color: '#69ff47', label: 'IoU@0.75', alpha: 0.15, drop: 0.55 },
+  ];
+
+  curves.forEach(curve => {
+    const pts = [];
+    for (let i = 0; i <= 60; i++) {
+      const r = i / 60;
+      const p = Math.pow(1 - r, 0.5 + curve.drop) * (0.92 - curve.drop * 0.3) + 0.04;
+      pts.push({ r, p: Math.max(p, 0.02) });
+    }
+
+    // Fill
+    ctx.beginPath();
+    ctx.moveTo(pad.l, pad.t + ch);
+    pts.forEach(pt => {
+      ctx.lineTo(pad.l + pt.r * cw, pad.t + (1 - pt.p) * ch);
+    });
+    ctx.lineTo(pad.l + cw, pad.t + ch);
+    ctx.closePath();
+    ctx.fillStyle = curve.color.replace(')', `, ${curve.alpha})`).replace('rgb', 'rgba').replace('#', 'rgba(').replace('rgba(00', 'rgba(0,').replace(/(..)(..)(..)\,/, (m, r, g, b) => {
+      return `${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)},`;
+    });
+    // simple fill
+    ctx.fillStyle = curve.color + '18';
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    pts.forEach((pt, i) => {
+      const x = pad.l + pt.r * cw;
+      const y = pad.t + (1 - pt.p) * ch;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = curve.color;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+  });
+
+  // Axis
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '9px JetBrains Mono';
+  for (let i = 0; i <= 4; i++) {
+    ctx.fillText((i/4).toFixed(1), pad.l - 26, pad.t + ch - (ch/4)*i + 3);
+    ctx.fillText((i/4).toFixed(1), pad.l + (cw/4)*i - 6, pad.t + ch + 14);
+  }
+  ctx.fillText('Recall →', pad.l + cw/2 - 20, H - 4);
+
+  // Legend
+  curves.forEach((c, i) => {
+    const lx = pad.l + 8;
+    const ly = pad.t + 16 + i * 16;
+    ctx.fillStyle = c.color;
+    ctx.fillRect(lx, ly - 5, 14, 3);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '9px JetBrains Mono';
+    ctx.fillText(c.label, lx + 18, ly);
+  });
+}
+
+// Init
+updateThreshold();
+drawCECurve();
+drawDiceCurve();
+drawMapCanvas();
+</script>
+</body>
+</html>
